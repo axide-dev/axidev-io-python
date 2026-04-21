@@ -1,0 +1,167 @@
+name: Integration tests (manual)
+
+# Manual workflow to build the interactive integration test binaries for the
+# currently supported platforms. The tests themselves remain manual because
+# they depend on real focus, permissions, and device state.
+on:
+  workflow_dispatch:
+    # no inputs
+
+env:
+  INTEGRATION_PACKAGE_VERSION: run-${{ github.run_id }}
+
+permissions:
+  contents: write
+
+jobs:
+  build-ubuntu-x64:
+    name: Build integration binaries (Ubuntu x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-linux
+        with:
+          arch: x64
+          package-integration-tests: "true"
+          upload-integration-package: "true"
+          artifact-name: integration-test-package-ubuntu-latest-x64
+          version: ${{ env.INTEGRATION_PACKAGE_VERSION }}
+
+  build-windows-x64:
+    name: Build integration binaries (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-windows-mingw
+        with:
+          arch: x64
+          package-integration-tests: "true"
+          upload-integration-package: "true"
+          artifact-name: integration-test-package-windows-latest-x64
+          version: ${{ env.INTEGRATION_PACKAGE_VERSION }}
+
+  release:
+    name: Create integration test release
+    runs-on: ubuntu-latest
+    needs:
+      - build-ubuntu-x64
+      - build-windows-x64
+    if: ${{ always() }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all workflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          if [ ! -d artifacts ]; then
+            echo "No artifacts downloaded; skipping asset collection."
+            exit 0
+          fi
+
+          expected=(
+            "axidev-io-integration-tests-${INTEGRATION_PACKAGE_VERSION}-linux-x64.zip"
+            "axidev-io-integration-tests-${INTEGRATION_PACKAGE_VERSION}-windows-x64.zip"
+          )
+
+          missing=0
+          for name in "${expected[@]}"; do
+            src="$(find artifacts -type f -name "$name" -print -quit || true)"
+            if [ -z "$src" ]; then
+              echo "::error::Missing expected integration-test asset: $name"
+              missing=1
+              continue
+            fi
+            cp "$src" "release-assets/$name"
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more integration-test assets are missing."
+            exit 1
+          fi
+
+      - name: Check for release assets
+        id: check-assets
+        run: |
+          if [ -n "$(find release-assets -type f 2>/dev/null)" ]; then
+            echo "has_assets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_assets=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify packaged integration test assets
+        if: steps.check-assets.outputs.has_assets == 'true'
+        run: |
+          set -euo pipefail
+
+          linux_asset="release-assets/axidev-io-integration-tests-${INTEGRATION_PACKAGE_VERSION}-linux-x64.zip"
+          windows_asset="release-assets/axidev-io-integration-tests-${INTEGRATION_PACKAGE_VERSION}-windows-x64.zip"
+
+          unzip -Z1 "$linux_asset" | grep -Fx 'bin/test_integration_sender'
+          unzip -Z1 "$linux_asset" | grep -Fx 'bin/test_integration_listener'
+          unzip -Z1 "$linux_asset" | grep -Fx 'scripts/setup_uinput_permissions.sh'
+          unzip -Z1 "$linux_asset" | grep -Fx 'docs/consumers/README.md'
+          unzip -Z1 "$linux_asset" | grep -Fx 'LICENSE'
+          unzip -Z1 "$linux_asset" | grep -Fx 'vendor/licenses/stb.txt'
+
+          zipinfo -l "$linux_asset" | awk '{print $1 " " $NF}' | grep -Fx -- '-rwxr-xr-x bin/test_integration_sender'
+          zipinfo -l "$linux_asset" | awk '{print $1 " " $NF}' | grep -Fx -- '-rwxr-xr-x bin/test_integration_listener'
+          zipinfo -l "$linux_asset" | awk '{print $1 " " $NF}' | grep -Fx -- '-rwxr-xr-x scripts/setup_uinput_permissions.sh'
+
+          unzip -Z1 "$windows_asset" | grep -Fx 'bin/test_integration_sender.exe'
+          unzip -Z1 "$windows_asset" | grep -Fx 'bin/test_integration_listener.exe'
+          unzip -Z1 "$windows_asset" | grep -Fx 'docs/consumers/README.md'
+          unzip -Z1 "$windows_asset" | grep -Fx 'LICENSE'
+          unzip -Z1 "$windows_asset" | grep -Fx 'vendor/licenses/stb.txt'
+
+      - name: Generate release metadata
+        if: steps.check-assets.outputs.has_assets == 'true'
+        id: release-tag
+        run: |
+          TAG="integration-tests-$(date +%Y%m%d-%H%M%S)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "name=Integration Test Binaries - $TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        if: steps.check-assets.outputs.has_assets == 'true'
+        id: create-release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ steps.release-tag.outputs.tag }}
+          release_name: ${{ steps.release-tag.outputs.name }}
+          body: |
+            Manually triggered integration test binaries for various platforms.
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        if: steps.check-assets.outputs.has_assets == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          upload_url="${{ steps.create-release.outputs.upload_url }}"
+          upload_url="${upload_url%\{*}"
+          for asset in release-assets/*; do
+            if [ ! -f "$asset" ]; then
+              continue
+            fi
+            name=$(basename "$asset")
+            echo "Uploading $name"
+            curl -sS -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$asset" \
+              "${upload_url}?name=${name}"
+          done

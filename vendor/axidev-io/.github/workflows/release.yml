@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-ubuntu-x64:
+    name: Build & package (Ubuntu x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-linux
+        with:
+          arch: x64
+          package-output: "true"
+          version: ${{ github.event.inputs.version || '' }}
+
+  build-windows-x64:
+    name: Build & package (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-windows-mingw
+        with:
+          arch: x64
+          package-output: "true"
+          version: ${{ github.event.inputs.version || '' }}
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-ubuntu-x64
+      - build-windows-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release assets
+        id: collect-assets
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version || '' }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_VERSION:-${GITHUB_REF#refs/tags/}}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          mkdir -p release-assets
+
+          expected=(
+            "axidev-io-${TAG}-linux-x64.tar.gz"
+            "axidev-io-${TAG}-windows-x64.zip"
+          )
+
+          missing=0
+          for name in "${expected[@]}"; do
+            src="$(find artifacts -type f -name "$name" -print -quit || true)"
+            if [ -z "$src" ]; then
+              echo "::error::Missing expected release asset: $name"
+              missing=1
+              continue
+            fi
+            cp "$src" "release-assets/$name"
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more release assets are missing."
+            exit 1
+          fi
+
+      - name: Verify packaged license files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          linux_asset="release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-linux-x64.tar.gz"
+          windows_asset="release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-windows-x64.zip"
+
+          # Every release archive must carry the consumer guide, the project
+          # license, and the full vendored license directory so downstream
+          # consumers receive both usage guidance and third-party notices with
+          # the packaged library.
+          tar -tzf "$linux_asset" | grep -Fx './docs/consumers/README.md'
+          tar -tzf "$linux_asset" | grep -Fx './LICENSE'
+          tar -tzf "$linux_asset" | grep -Fx './vendor/licenses/stb.txt'
+
+          unzip -Z1 "$windows_asset" | grep -Fx 'docs/consumers/README.md'
+          unzip -Z1 "$windows_asset" | grep -Fx 'LICENSE'
+          unzip -Z1 "$windows_asset" | grep -Fx 'vendor/licenses/stb.txt'
+
+      - name: Create GitHub release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.collect-assets.outputs.tag }}
+          release_name: ${{ steps.collect-assets.outputs.tag }}
+          commitish: ${{ github.sha }}
+
+      - name: Upload asset (linux x64)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.upload_url }}
+          asset_path: release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-linux-x64.tar.gz
+          asset_name: axidev-io-${{ steps.collect-assets.outputs.tag }}-linux-x64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload asset (windows x64)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.upload_url }}
+          asset_path: release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-windows-x64.zip
+          asset_name: axidev-io-${{ steps.collect-assets.outputs.tag }}-windows-x64.zip
+          asset_content_type: application/zip

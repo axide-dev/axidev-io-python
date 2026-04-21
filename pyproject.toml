@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axidev-io"
+version = "0.1.0"
+description = "Python bindings for the native axidev-io keyboard library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Axidev" }]
+keywords = ["axidev", "automation", "keyboard", "listener", "native"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: C",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+axidev_io = [
+  "py.typed",
+  "vendor/axidev-io/LICENSE",
+  "vendor/axidev-io/README.md",
+  "vendor/axidev-io/docs/consumers/README.md",
+  "vendor/axidev-io/scripts/setup_uinput_permissions.sh",
+  "vendor/axidev-io/vendor/licenses/stb.txt",
+]

@@ -1,0 +1,16 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+graft csrc
+graft src/axidev_io
+graft vendor/axidev-io/include
+graft vendor/axidev-io/src
+graft vendor/axidev-io/vendor
+graft vendor/axidev-io/docs
+graft vendor/axidev-io/scripts
+include vendor/axidev-io/LICENSE
+include vendor/axidev-io/README.md
+prune vendor/axidev-io/build
+prune vendor/axidev-io/.git
+global-exclude __pycache__ *.py[cod] *.obj *.o *.a *.lib
