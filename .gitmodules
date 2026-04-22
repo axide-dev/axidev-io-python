@@ -1,0 +1,4 @@
+[submodule "vendor/axidev-io"]
+	path = vendor/axidev-io
+	url = git@github.com:axide-dev/axidev-io.git
+	branch = release

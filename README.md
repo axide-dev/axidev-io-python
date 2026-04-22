@@ -20,7 +20,8 @@ The Python import name is `axidev_io`.
 pip install axidev-io
 ```
 
-The source distribution builds the native extension from vendored `axidev-io` C sources.
+The source distribution builds the native extension from the checked-out
+`vendor/axidev-io` git submodule.
 
 ## Platform Notes
 
@@ -124,7 +125,13 @@ The installed package ships the upstream consumer and license material under `ax
 Useful local commands:
 
 ```sh
+git submodule update --init --recursive
+git submodule update --remote vendor/axidev-io
 python scripts/sync_upstream.py
 python -m pip install -e .
 python -m build
 ```
+
+The `vendor/axidev-io` submodule tracks the upstream `release` branch. After
+updating the submodule, run `python scripts/sync_upstream.py` to refresh the
+package-shipped compliance assets under `src/axidev_io/vendor/axidev-io/`.

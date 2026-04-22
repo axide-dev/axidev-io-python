@@ -12,5 +12,5 @@ graft vendor/axidev-io/scripts
 include vendor/axidev-io/LICENSE
 include vendor/axidev-io/README.md
 prune vendor/axidev-io/build
-prune vendor/axidev-io/.git
+exclude vendor/axidev-io/.git
 global-exclude __pycache__ *.py[cod] *.obj *.o *.a *.lib
