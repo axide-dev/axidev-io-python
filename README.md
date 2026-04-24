@@ -90,7 +90,7 @@ Main entrypoints:
 Sender methods:
 
 - `keyboard.sender.tap(input, mods=None)`
-- `keyboard.sender.key_down(input, mods=None)`
+- `keyboard.sender.key_down(input, mods=None, repeat=True)`
 - `keyboard.sender.key_repeat(input, mods=None)`
 - `keyboard.sender.key_up(input, mods=None)`
 - `keyboard.sender.type_text(text)`

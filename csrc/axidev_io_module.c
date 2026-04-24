@@ -140,15 +140,17 @@ static PyObject *mod_request_permissions(PyObject *self,
 static PyObject *mod_key_down(PyObject *self, PyObject *args) {
   int key = 0;
   int mods = 0;
+  int repeat = 0;
   (void)self;
 
-  if (!PyArg_ParseTuple(args, "ii", &key, &mods)) {
+  if (!PyArg_ParseTuple(args, "iip", &key, &mods, &repeat)) {
     return NULL;
   }
 
   return bool_result(axidev_io_keyboard_key_down(
       (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
-                                               .mods = (axidev_io_keyboard_modifier_t)mods}));
+                                               .mods = (axidev_io_keyboard_modifier_t)mods},
+      repeat));
 }
 
 
@@ -176,9 +178,10 @@ static PyObject *mod_key_repeat(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  return bool_result(axidev_io_keyboard_key_repeat(
+  return bool_result(axidev_io_keyboard_key_down(
       (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
-                                               .mods = (axidev_io_keyboard_modifier_t)mods}));
+                                               .mods = (axidev_io_keyboard_modifier_t)mods},
+      true));
 }
 
 

@@ -345,10 +345,15 @@ class KeyboardSender:
             active_modifier_names=self.active_modifier_names,
         )
 
-    def key_down(self, input_value: KeyInput, mods: ModifierInput = None) -> None:
+    def key_down(
+        self,
+        input_value: KeyInput,
+        mods: ModifierInput = None,
+        repeat: bool = True,
+    ) -> None:
         _ensure_keyboard_initialized("keyboard.sender.key_down")
         combo = self._keys.resolve(input_value, mods)
-        _assert_ok("key_down", _native.key_down(combo.key, combo.mods))
+        _assert_ok("key_down", _native.key_down(combo.key, combo.mods, repeat))
 
     def key_up(self, input_value: KeyInput, mods: ModifierInput = None) -> None:
         _ensure_keyboard_initialized("keyboard.sender.key_up")
