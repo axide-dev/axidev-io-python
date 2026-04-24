@@ -355,6 +355,11 @@ class KeyboardSender:
         combo = self._keys.resolve(input_value, mods)
         _assert_ok("key_up", _native.key_up(combo.key, combo.mods))
 
+    def key_repeat(self, input_value: KeyInput, mods: ModifierInput = None) -> None:
+        _ensure_keyboard_initialized("keyboard.sender.key_repeat")
+        combo = self._keys.resolve(input_value, mods)
+        _assert_ok("key_repeat", _native.key_repeat(combo.key, combo.mods))
+
     def tap(self, input_value: KeyInput, mods: ModifierInput = None) -> None:
         _ensure_keyboard_initialized("keyboard.sender.tap")
         combo = self._keys.resolve(input_value, mods)
@@ -400,6 +405,7 @@ class KeyboardSender:
         _native.set_key_delay(_assert_integer(delay_us, "delay_us"))
 
     press = key_down
+    repeat = key_repeat
     release = key_up
     text = type_text
     character = type_character
@@ -574,6 +580,14 @@ class Keyboard:
     def set_log_level(self, level: LogLevelInput) -> None:
         _native.log_set_level(_resolve_log_level(level))
 
+    def is_log_enabled(self, level: LogLevelInput) -> bool:
+        return _native.log_is_enabled(_resolve_log_level(level))
+
+    def log_message(self, level: LogLevelInput, message: str) -> None:
+        if not isinstance(message, str):
+            raise TypeError("message must be a string")
+        _native.log_message(_resolve_log_level(level), message)
+
     def version(self) -> str:
         return _native.version()
 
@@ -729,14 +743,17 @@ get_capabilities = keyboard.get_capabilities
 get_last_error = keyboard.get_last_error
 get_log_level = keyboard.get_log_level
 get_log_level_name = keyboard.get_log_level_name
+is_log_enabled = keyboard.is_log_enabled
 has_required_permissions = keyboard.has_required_permissions
 hold_modifiers = keyboard.sender.hold_modifiers
 initialize = keyboard.initialize
 is_listening = keyboard.listener.is_listening
 is_ready = keyboard.is_ready
 key_down = keyboard.sender.key_down
+key_repeat = keyboard.sender.key_repeat
 key_up = keyboard.sender.key_up
 listen = keyboard.listener.listen
+log_message = keyboard.log_message
 release_all_modifiers = keyboard.sender.release_all_modifiers
 release_modifiers = keyboard.sender.release_modifiers
 request_permissions = keyboard.request_permissions

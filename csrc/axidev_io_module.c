@@ -167,6 +167,21 @@ static PyObject *mod_key_up(PyObject *self, PyObject *args) {
 }
 
 
+static PyObject *mod_key_repeat(PyObject *self, PyObject *args) {
+  int key = 0;
+  int mods = 0;
+  (void)self;
+
+  if (!PyArg_ParseTuple(args, "ii", &key, &mods)) {
+    return NULL;
+  }
+
+  return bool_result(axidev_io_keyboard_key_repeat(
+      (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
+                                               .mods = (axidev_io_keyboard_modifier_t)mods}));
+}
+
+
 static PyObject *mod_tap(PyObject *self, PyObject *args) {
   int key = 0;
   int mods = 0;
@@ -458,6 +473,39 @@ static PyObject *mod_log_get_level(PyObject *self, PyObject *Py_UNUSED(args)) {
 }
 
 
+static PyObject *mod_log_is_enabled(PyObject *self, PyObject *args) {
+  unsigned int level = 0;
+  (void)self;
+
+  if (!PyArg_ParseTuple(args, "I", &level)) {
+    return NULL;
+  }
+
+  return bool_result(axidev_io_log_is_enabled((axidev_io_log_level_t)level));
+}
+
+
+static PyObject *mod_log_message(PyObject *self, PyObject *args) {
+  unsigned int level = 0;
+  PyObject *message_obj = NULL;
+  const char *message = NULL;
+  (void)self;
+
+  if (!PyArg_ParseTuple(args, "IU", &level, &message_obj)) {
+    return NULL;
+  }
+
+  message = PyUnicode_AsUTF8(message_obj);
+  if (message == NULL) {
+    return NULL;
+  }
+
+  axidev_io_log_message((axidev_io_log_level_t)level, "axidev_io", 0, "%s",
+                        message);
+  Py_RETURN_NONE;
+}
+
+
 static void module_free(void *module) {
   (void)module;
   axidev_io_listener_stop();
@@ -475,6 +523,7 @@ static PyMethodDef module_methods[] = {
     {"request_permissions", mod_request_permissions, METH_NOARGS, NULL},
     {"key_down", mod_key_down, METH_VARARGS, NULL},
     {"key_up", mod_key_up, METH_VARARGS, NULL},
+    {"key_repeat", mod_key_repeat, METH_VARARGS, NULL},
     {"tap", mod_tap, METH_VARARGS, NULL},
     {"active_modifiers", mod_active_modifiers, METH_NOARGS, NULL},
     {"hold_modifiers", mod_hold_modifiers, METH_VARARGS, NULL},
@@ -498,6 +547,8 @@ static PyMethodDef module_methods[] = {
     {"clear_last_error", mod_clear_last_error, METH_NOARGS, NULL},
     {"log_set_level", mod_log_set_level, METH_VARARGS, NULL},
     {"log_get_level", mod_log_get_level, METH_NOARGS, NULL},
+    {"log_is_enabled", mod_log_is_enabled, METH_VARARGS, NULL},
+    {"log_message", mod_log_message, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL},
 };
 

@@ -84,11 +84,14 @@ Main entrypoints:
 - `keyboard.setup_permissions()`
 - `keyboard.status()`
 - `keyboard.version()`
+- `keyboard.is_log_enabled(level)`
+- `keyboard.log_message(level, message)`
 
 Sender methods:
 
 - `keyboard.sender.tap(input, mods=None)`
 - `keyboard.sender.key_down(input, mods=None)`
+- `keyboard.sender.key_repeat(input, mods=None)`
 - `keyboard.sender.key_up(input, mods=None)`
 - `keyboard.sender.type_text(text)`
 - `keyboard.sender.type_character(input)`
