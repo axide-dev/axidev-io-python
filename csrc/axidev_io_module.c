@@ -141,47 +141,62 @@ static PyObject *mod_key_down(PyObject *self, PyObject *args) {
   int key = 0;
   int mods = 0;
   int repeat = 0;
+  bool ok;
   (void)self;
 
   if (!PyArg_ParseTuple(args, "iip", &key, &mods, &repeat)) {
     return NULL;
   }
 
-  return bool_result(axidev_io_keyboard_key_down(
-      (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
-                                               .mods = (axidev_io_keyboard_modifier_t)mods},
-      repeat));
+  Py_BEGIN_ALLOW_THREADS
+  ok = axidev_io_keyboard_key_down(
+      (axidev_io_keyboard_key_with_modifier_t){
+          .key = (axidev_io_keyboard_key_t)key,
+          .mods = (axidev_io_keyboard_modifier_t)mods},
+      repeat);
+  Py_END_ALLOW_THREADS
+  return bool_result(ok);
 }
 
 
 static PyObject *mod_key_up(PyObject *self, PyObject *args) {
   int key = 0;
   int mods = 0;
+  bool ok;
   (void)self;
 
   if (!PyArg_ParseTuple(args, "ii", &key, &mods)) {
     return NULL;
   }
 
-  return bool_result(axidev_io_keyboard_key_up(
-      (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
-                                               .mods = (axidev_io_keyboard_modifier_t)mods}));
+  Py_BEGIN_ALLOW_THREADS
+  ok = axidev_io_keyboard_key_up(
+      (axidev_io_keyboard_key_with_modifier_t){
+          .key = (axidev_io_keyboard_key_t)key,
+          .mods = (axidev_io_keyboard_modifier_t)mods});
+  Py_END_ALLOW_THREADS
+  return bool_result(ok);
 }
 
 
 static PyObject *mod_key_repeat(PyObject *self, PyObject *args) {
   int key = 0;
   int mods = 0;
+  bool ok;
   (void)self;
 
   if (!PyArg_ParseTuple(args, "ii", &key, &mods)) {
     return NULL;
   }
 
-  return bool_result(axidev_io_keyboard_key_down(
-      (axidev_io_keyboard_key_with_modifier_t){.key = (axidev_io_keyboard_key_t)key,
-                                               .mods = (axidev_io_keyboard_modifier_t)mods},
-      true));
+  Py_BEGIN_ALLOW_THREADS
+  ok = axidev_io_keyboard_key_down(
+      (axidev_io_keyboard_key_with_modifier_t){
+          .key = (axidev_io_keyboard_key_t)key,
+          .mods = (axidev_io_keyboard_modifier_t)mods},
+      true);
+  Py_END_ALLOW_THREADS
+  return bool_result(ok);
 }
 
 
