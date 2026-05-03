@@ -19,6 +19,7 @@ COMMON_SOURCES = [
     UPSTREAM_ROOT / "src" / "core" / "context.c",
     UPSTREAM_ROOT / "src" / "core" / "log.c",
     UPSTREAM_ROOT / "src" / "internal" / "utf.c",
+    UPSTREAM_ROOT / "src" / "mouse" / "mouse_common.c",
     UPSTREAM_ROOT / "src" / "vendor" / "stb_ds_impl.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "common" / "key_utils.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "common" / "keymap.c",
@@ -29,6 +30,7 @@ WINDOWS_SOURCES = [
     UPSTREAM_ROOT / "src" / "keyboard" / "common" / "windows_keymap.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "sender" / "sender_windows.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "listener" / "listener_windows.c",
+    UPSTREAM_ROOT / "src" / "mouse" / "mouse_windows.c",
 ]
 
 LINUX_SOURCES = [
@@ -37,6 +39,7 @@ LINUX_SOURCES = [
     UPSTREAM_ROOT / "src" / "keyboard" / "common" / "linux_keysym.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "sender" / "sender_uinput.c",
     UPSTREAM_ROOT / "src" / "keyboard" / "listener" / "listener_linux.c",
+    UPSTREAM_ROOT / "src" / "mouse" / "mouse_linux.c",
 ]
 
 
@@ -158,15 +161,17 @@ def make_extension() -> Extension:
             (UPSTREAM_ROOT / "src").as_posix(),
             (UPSTREAM_ROOT / "vendor").as_posix(),
         ],
-        define_macros=[],
+        define_macros=[("Py_LIMITED_API", "0x030A0000")],
         extra_compile_args=[],
         extra_link_args=[],
         libraries=[],
         language="c",
+        py_limited_api=True,
     )
 
 
 setup(
     ext_modules=[make_extension()],
     cmdclass={"build_ext": AxidevIoBuildExt},
+    options={"bdist_wheel": {"py_limited_api": "cp310"}},
 )

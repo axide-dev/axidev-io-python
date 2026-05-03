@@ -8,11 +8,19 @@
 
 
 static PyObject *listener_callback = NULL;
+static PyObject *mouse_listener_callback = NULL;
 
 
 static void clear_listener_callback(void) {
   PyObject *callback = listener_callback;
   listener_callback = NULL;
+  Py_XDECREF(callback);
+}
+
+
+static void clear_mouse_listener_callback(void) {
+  PyObject *callback = mouse_listener_callback;
+  mouse_listener_callback = NULL;
   Py_XDECREF(callback);
 }
 
@@ -72,6 +80,31 @@ static PyObject *build_listener_event_dict(
 }
 
 
+static PyObject *build_mouse_state_dict(const axidev_io_mouse_state_t *state) {
+  return Py_BuildValue("{s:i,s:i,s:i,s:d,s:d,s:K}", "x", state->x, "y",
+                       state->y, "buttons", (int)state->buttons, "scroll_x",
+                       state->scroll_x, "scroll_y", state->scroll_y,
+                       "timestamp_ms", (unsigned long long)state->timestamp_ms);
+}
+
+
+static PyObject *unicode_as_utf8_bytes(PyObject *value, const char **text) {
+  PyObject *bytes = PyUnicode_AsUTF8String(value);
+  if (bytes == NULL) {
+    *text = NULL;
+    return NULL;
+  }
+
+  *text = PyBytes_AsString(bytes);
+  if (*text == NULL) {
+    Py_DECREF(bytes);
+    return NULL;
+  }
+
+  return bytes;
+}
+
+
 static void listener_bridge(
     uint32_t codepoint, axidev_io_keyboard_key_with_modifier_t key_mod,
     bool pressed, void *user_data) {
@@ -81,9 +114,30 @@ static void listener_bridge(
   if (listener_callback != NULL) {
     PyObject *event = build_listener_event_dict(codepoint, key_mod, pressed);
     if (event != NULL) {
-      PyObject *result = PyObject_CallOneArg(listener_callback, event);
+      PyObject *result = PyObject_CallFunctionObjArgs(listener_callback, event, NULL);
       if (result == NULL) {
         PyErr_WriteUnraisable(listener_callback);
+      } else {
+        Py_DECREF(result);
+      }
+      Py_DECREF(event);
+    }
+  }
+  PyGILState_Release(gil_state);
+}
+
+
+static void mouse_listener_bridge(const axidev_io_mouse_state_t *state,
+                                  void *user_data) {
+  (void)user_data;
+
+  PyGILState_STATE gil_state = PyGILState_Ensure();
+  if (mouse_listener_callback != NULL && state != NULL) {
+    PyObject *event = build_mouse_state_dict(state);
+    if (event != NULL) {
+      PyObject *result = PyObject_CallFunctionObjArgs(mouse_listener_callback, event, NULL);
+      if (result == NULL) {
+        PyErr_WriteUnraisable(mouse_listener_callback);
       } else {
         Py_DECREF(result);
       }
@@ -103,7 +157,9 @@ static PyObject *mod_initialize(PyObject *self, PyObject *Py_UNUSED(args)) {
 static PyObject *mod_free(PyObject *self, PyObject *Py_UNUSED(args)) {
   (void)self;
   axidev_io_listener_stop();
+  axidev_io_mouse_listener_stop();
   clear_listener_callback();
+  clear_mouse_listener_callback();
   axidev_io_keyboard_free();
   Py_RETURN_NONE;
 }
@@ -256,19 +312,23 @@ static PyObject *mod_release_all_modifiers(PyObject *self,
 
 static PyObject *mod_type_text(PyObject *self, PyObject *args) {
   PyObject *text_obj = NULL;
+  PyObject *text_bytes = NULL;
   const char *text = NULL;
+  bool ok;
   (void)self;
 
   if (!PyArg_ParseTuple(args, "U", &text_obj)) {
     return NULL;
   }
 
-  text = PyUnicode_AsUTF8(text_obj);
-  if (text == NULL) {
+  text_bytes = unicode_as_utf8_bytes(text_obj, &text);
+  if (text_bytes == NULL) {
     return NULL;
   }
 
-  return bool_result(axidev_io_keyboard_type_text(text));
+  ok = axidev_io_keyboard_type_text(text);
+  Py_DECREF(text_bytes);
+  return bool_result(ok);
 }
 
 
@@ -354,6 +414,73 @@ static PyObject *mod_is_listening(PyObject *self, PyObject *Py_UNUSED(args)) {
 }
 
 
+static PyObject *mod_mouse_poll(PyObject *self, PyObject *Py_UNUSED(args)) {
+  axidev_io_mouse_state_t state;
+  bool ok;
+  (void)self;
+
+  Py_BEGIN_ALLOW_THREADS
+  ok = axidev_io_mouse_poll(&state);
+  Py_END_ALLOW_THREADS
+  if (!ok) {
+    Py_RETURN_NONE;
+  }
+  return build_mouse_state_dict(&state);
+}
+
+
+static PyObject *mod_start_mouse_listener(PyObject *self, PyObject *args) {
+  PyObject *callback = NULL;
+  PyObject *previous = NULL;
+  bool ok = false;
+  (void)self;
+
+  if (!PyArg_ParseTuple(args, "O", &callback)) {
+    return NULL;
+  }
+
+  if (!PyCallable_Check(callback)) {
+    PyErr_SetString(PyExc_TypeError, "listener must be callable");
+    return NULL;
+  }
+
+  Py_INCREF(callback);
+  previous = mouse_listener_callback;
+  mouse_listener_callback = callback;
+
+  if (axidev_io_mouse_listener_is_listening()) {
+    Py_XDECREF(previous);
+    Py_RETURN_TRUE;
+  }
+
+  ok = axidev_io_mouse_listener_start(mouse_listener_bridge, NULL);
+  if (!ok) {
+    mouse_listener_callback = previous;
+    Py_DECREF(callback);
+    return bool_result(false);
+  }
+
+  Py_XDECREF(previous);
+  Py_RETURN_TRUE;
+}
+
+
+static PyObject *mod_stop_mouse_listener(PyObject *self,
+                                         PyObject *Py_UNUSED(args)) {
+  (void)self;
+  axidev_io_mouse_listener_stop();
+  clear_mouse_listener_callback();
+  Py_RETURN_NONE;
+}
+
+
+static PyObject *mod_is_mouse_listening(PyObject *self,
+                                        PyObject *Py_UNUSED(args)) {
+  (void)self;
+  return bool_result(axidev_io_mouse_listener_is_listening());
+}
+
+
 static PyObject *mod_key_to_string(PyObject *self, PyObject *args) {
   int key = 0;
   char *text = NULL;
@@ -377,19 +504,23 @@ static PyObject *mod_key_to_string(PyObject *self, PyObject *args) {
 
 static PyObject *mod_string_to_key(PyObject *self, PyObject *args) {
   PyObject *text_obj = NULL;
+  PyObject *text_bytes = NULL;
   const char *text = NULL;
+  axidev_io_keyboard_key_t key;
   (void)self;
 
   if (!PyArg_ParseTuple(args, "U", &text_obj)) {
     return NULL;
   }
 
-  text = PyUnicode_AsUTF8(text_obj);
-  if (text == NULL) {
+  text_bytes = unicode_as_utf8_bytes(text_obj, &text);
+  if (text_bytes == NULL) {
     return NULL;
   }
 
-  return PyLong_FromLong((long)axidev_io_keyboard_string_to_key(text));
+  key = axidev_io_keyboard_string_to_key(text);
+  Py_DECREF(text_bytes);
+  return PyLong_FromLong((long)key);
 }
 
 
@@ -419,7 +550,9 @@ static PyObject *mod_key_to_string_with_modifier(PyObject *self, PyObject *args)
 
 static PyObject *mod_string_to_key_with_modifier(PyObject *self, PyObject *args) {
   PyObject *text_obj = NULL;
+  PyObject *text_bytes = NULL;
   const char *text = NULL;
+  bool ok;
   axidev_io_keyboard_key_with_modifier_t key_mod = {
       .key = AXIDEV_IO_KEY_UNKNOWN,
       .mods = AXIDEV_IO_MOD_NONE,
@@ -430,12 +563,14 @@ static PyObject *mod_string_to_key_with_modifier(PyObject *self, PyObject *args)
     return NULL;
   }
 
-  text = PyUnicode_AsUTF8(text_obj);
-  if (text == NULL) {
+  text_bytes = unicode_as_utf8_bytes(text_obj, &text);
+  if (text_bytes == NULL) {
     return NULL;
   }
 
-  if (!axidev_io_keyboard_string_to_key_with_modifier(text, &key_mod)) {
+  ok = axidev_io_keyboard_string_to_key_with_modifier(text, &key_mod);
+  Py_DECREF(text_bytes);
+  if (!ok) {
     Py_RETURN_NONE;
   }
 
@@ -506,6 +641,7 @@ static PyObject *mod_log_is_enabled(PyObject *self, PyObject *args) {
 static PyObject *mod_log_message(PyObject *self, PyObject *args) {
   unsigned int level = 0;
   PyObject *message_obj = NULL;
+  PyObject *message_bytes = NULL;
   const char *message = NULL;
   (void)self;
 
@@ -513,13 +649,14 @@ static PyObject *mod_log_message(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  message = PyUnicode_AsUTF8(message_obj);
-  if (message == NULL) {
+  message_bytes = unicode_as_utf8_bytes(message_obj, &message);
+  if (message_bytes == NULL) {
     return NULL;
   }
 
   axidev_io_log_message((axidev_io_log_level_t)level, "axidev_io", 0, "%s",
                         message);
+  Py_DECREF(message_bytes);
   Py_RETURN_NONE;
 }
 
@@ -527,7 +664,9 @@ static PyObject *mod_log_message(PyObject *self, PyObject *args) {
 static void module_free(void *module) {
   (void)module;
   axidev_io_listener_stop();
+  axidev_io_mouse_listener_stop();
   clear_listener_callback();
+  clear_mouse_listener_callback();
   axidev_io_keyboard_free();
 }
 
@@ -554,6 +693,10 @@ static PyMethodDef module_methods[] = {
     {"start_listener", mod_start_listener, METH_VARARGS, NULL},
     {"stop_listener", mod_stop_listener, METH_NOARGS, NULL},
     {"is_listening", mod_is_listening, METH_NOARGS, NULL},
+    {"mouse_poll", mod_mouse_poll, METH_NOARGS, NULL},
+    {"start_mouse_listener", mod_start_mouse_listener, METH_VARARGS, NULL},
+    {"stop_mouse_listener", mod_stop_mouse_listener, METH_NOARGS, NULL},
+    {"is_mouse_listening", mod_is_mouse_listening, METH_NOARGS, NULL},
     {"key_to_string", mod_key_to_string, METH_VARARGS, NULL},
     {"string_to_key", mod_string_to_key, METH_VARARGS, NULL},
     {"key_to_string_with_modifier", mod_key_to_string_with_modifier, METH_VARARGS,

@@ -26,6 +26,7 @@ from ._errors import AxidevIoError, AxidevIoStateError
 ModifierInput: TypeAlias = int | Modifier | str | Sequence[str] | None
 LogLevelInput: TypeAlias = int | LogLevel | str
 Listener: TypeAlias = Callable[["KeyEvent"], None]
+MouseListenerCallback: TypeAlias = Callable[["MouseState"], None]
 Unsubscribe: TypeAlias = Callable[[], None]
 
 
@@ -62,6 +63,16 @@ class KeyEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class MouseState:
+    x: int
+    y: int
+    buttons: int
+    scroll_x: float
+    scroll_y: float
+    timestamp_ms: int
+
+
+@dataclass(frozen=True, slots=True)
 class KeyboardSenderStatus:
     initialized: bool
     ready: bool
@@ -72,6 +83,13 @@ class KeyboardSenderStatus:
 
 @dataclass(frozen=True, slots=True)
 class KeyboardListenerStatus:
+    initialized: bool
+    listening: bool
+    subscriber_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MouseListenerStatus:
     initialized: bool
     listening: bool
     subscriber_count: int
@@ -506,6 +524,92 @@ class KeyboardListener:
     subscribe = start
 
 
+class MouseListener:
+    def __init__(self) -> None:
+        self._listeners: set[MouseListenerCallback] = set()
+        self._native_listener_running = False
+
+    @property
+    def initialized(self) -> bool:
+        return self._native_listener_running or _native.mouse_poll() is not None
+
+    @property
+    def listening(self) -> bool:
+        return self.is_listening()
+
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._listeners)
+
+    def _decorate_mouse_state(self, raw_state: Mapping[str, object]) -> MouseState:
+        return MouseState(
+            x=int(raw_state["x"]),
+            y=int(raw_state["y"]),
+            buttons=int(raw_state["buttons"]),
+            scroll_x=float(raw_state["scroll_x"]),
+            scroll_y=float(raw_state["scroll_y"]),
+            timestamp_ms=int(raw_state["timestamp_ms"]),
+        )
+
+    def poll(self) -> MouseState | None:
+        raw_state = _native.mouse_poll()
+        if raw_state is None:
+            return None
+        return self._decorate_mouse_state(raw_state)
+
+    def is_listening(self) -> bool:
+        return self._native_listener_running and _native.is_mouse_listening()
+
+    def _emit_mouse_state(self, raw_state: Mapping[str, object]) -> None:
+        state = self._decorate_mouse_state(raw_state)
+        for listener in tuple(self._listeners):
+            try:
+                listener(state)
+            except Exception as exc:  # pragma: no cover - user callback failure path
+                warnings.warn(
+                    str(exc),
+                    RuntimeWarning,
+                    stacklevel=1,
+                )
+
+    def start(self, listener: MouseListenerCallback) -> Unsubscribe:
+        if not callable(listener):
+            raise TypeError("listener must be callable")
+
+        if not self._native_listener_running:
+            _assert_ok("start_mouse_listener", _native.start_mouse_listener(self._emit_mouse_state))
+            self._native_listener_running = True
+
+        self._listeners.add(listener)
+        active = True
+
+        def unsubscribe() -> None:
+            nonlocal active
+            if not active:
+                return
+            active = False
+            self._listeners.discard(listener)
+            if not self._listeners:
+                self.stop()
+
+        return unsubscribe
+
+    def stop(self) -> None:
+        self._listeners.clear()
+        _native.stop_mouse_listener()
+        self._native_listener_running = False
+
+    def status(self) -> MouseListenerStatus:
+        return MouseListenerStatus(
+            initialized=self.initialized,
+            listening=self.listening,
+            subscriber_count=self.subscriber_count,
+        )
+
+    listen = start
+    subscribe = start
+
+
 class PermissionHelpers:
     def __init__(self, keyboard: "Keyboard") -> None:
         self._keyboard = keyboard
@@ -529,6 +633,7 @@ class Keyboard:
         self.modifiers = self.keys.modifiers
         self.sender = KeyboardSender(self.get_capabilities, self.keys)
         self.listener = KeyboardListener()
+        self.mouse = MouseListener()
         self.permissions = PermissionHelpers(self)
 
     @property
@@ -635,6 +740,7 @@ class Keyboard:
 
     def shutdown(self) -> None:
         self.listener.stop()
+        self.mouse.stop()
         _native.free()
 
     free = shutdown
@@ -736,6 +842,7 @@ class Keyboard:
 keyboard = Keyboard()
 keys = keyboard.keys
 modifiers = keyboard.modifiers
+mouse = keyboard.mouse
 
 clear_last_error = keyboard.clear_last_error
 flush = keyboard.sender.flush
@@ -758,6 +865,9 @@ key_down = keyboard.sender.key_down
 key_repeat = keyboard.sender.key_repeat
 key_up = keyboard.sender.key_up
 listen = keyboard.listener.listen
+mouse_listen = keyboard.mouse.listen
+mouse_poll = keyboard.mouse.poll
+mouse_stop_listener = keyboard.mouse.stop
 log_message = keyboard.log_message
 release_all_modifiers = keyboard.sender.release_all_modifiers
 release_modifiers = keyboard.sender.release_modifiers
