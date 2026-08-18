@@ -161,8 +161,8 @@ Example:
   again before starting new repeated holds.
 - On Linux/uinput, this flag does not change the existing backend behavior.
 - On Windows, repeated keys are tied to the key/modifier mapping resolved by
-  the original `key_down(..., true)` call. Modifier-only holds do not repeat.
-  Multiple non-modifier keys may repeat simultaneously.
+  the original `key_down(..., true)` call. Modifier keys follow the same
+  opt-in repeat behavior. Multiple keys may repeat simultaneously.
 - `axidev_io_keyboard_release_all_modifiers()` cancels active Windows emulated
   repeats before releasing modifiers.
 - Repeated synthetic Windows events may be observed by the global listener.
@@ -172,6 +172,19 @@ Example:
 - `axidev_io_listener_start()` starts the single global listener.
 - Callbacks may run on an internal background thread.
 - Keep listener callbacks thread-safe and short.
+
+## Mouse
+
+- `axidev_io_mouse_poll()` returns the latest cursor/button snapshot.
+- `axidev_io_mouse_listener_start()` starts the single global mouse listener.
+- Mouse callbacks receive an `axidev_io_mouse_state_t` with cursor position,
+  button bitmask, scroll deltas for the current event, and a monotonic
+  timestamp.
+- On Windows, polling reads the current cursor and button state from Win32.
+- On Linux, listening uses libinput on `seat0` and updates the tracked state
+  from pointer events. libinput does not expose the desktop compositor cursor
+  position directly, so polling returns the latest tracked state rather than
+  querying a compositor-specific pointer API.
 
 ## Errors And Logging
 
@@ -183,7 +196,9 @@ Example:
 ## Platform Notes
 
 - Windows uses the Win32 keyboard APIs for injection and a low-level hook for
-  listening.
+  listening. Mouse observation uses Win32 cursor/button APIs and a low-level
+  mouse hook.
 - Linux injection uses `uinput`.
-- Linux listening uses `libinput` plus `xkbcommon`.
+- Linux keyboard listening uses `libinput` plus `xkbcommon`; mouse listening
+  uses `libinput`.
 - macOS is not supported in this repository.
